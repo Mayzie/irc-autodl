@@ -13,12 +13,27 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
+#if !defined(_WIN32) && (defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__)))
+#include <unistd.h>
+#if defined(_POSIX_VERSION)
+#if _POSIX_VERSION >= 200112L
+#include <sys/utsname.h>
+#endif  // _POSIX_VERSION >= 200112L
+#endif  // defined(_POSIX_VERSION)
+#endif  // UNIX
+
 #define CLIENT_NAME "MayzieBot"
 #define CLIENT_VERSION "0.01"
+
+#define CLIENT_NAME_LEN 9  // strlen(CLIENT_NAME)
+#define CLIENT_VERSION_LEN 4  // strlen(CLIENT_VERSION)
 
 #define IRC_TOTAL_MSG_LEN 512
 #define IRC_MSG_LEN (IRC_TOTAL_MSG_LEN - 2)
 #define CRLF "\r\n"
+
+#define LENGTH_PRIVMSG 8  // "PRIVMSG "
+#define LENGTH_NOTICE 7  // "NOTICE "
 
 struct irc_channel {
 	const char *name;

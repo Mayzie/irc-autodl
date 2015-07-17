@@ -21,8 +21,107 @@ int irc_send(const struct irc *irc, const char *msg) {
 	return send(irc->sockid, fixed_msg, length + 2, 0);
 }
 
+int irc_send_message(struct irc *irc, char *to, char *type, char *message) {
+	size_t type_len = strlen(type);
+	size_t to_len = strlen(to);
+	size_t message_len = strlen(message);
+
+	char fixed_msg[type_len + 1 + to_len + 2 + message_len];  // type + " " + to + " :" + message
+	strcpy(fixed_msg, type);
+	strcat(fixed_msg, " ");
+	strcat(fixed_msg, to);
+	strcat(fixed_msg, " :");
+	strcat(fixed_msg, message);
+
+	return irc_send(irc, fixed_msg);
+}
+
+int irc_send_notice(struct irc *irc, char *to, char *message) {
+	return irc_send_message(irc, to, "NOTICE", message);
+}
+
+int irc_send_privmsg(struct irc *irc, char *to, char *message) {
+	return irc_send_message(irc, to, "PRIVMSG", message);
+}
+
+int irc_send_ctcpreply_raw(struct irc *irc, char *to, char *ctcp_type, char *reply) {
+	size_t ctcp_type_len = strlen(ctcp_type);
+	size_t ctcp_reply_len = strlen(reply);
+
+	char reply_str[1 + ctcp_type_len + 1 + ctcp_reply_len + 1];  // '\0x01' + ctcp_type + ' ' + reply  '\0x01'
+	strcpy(reply_str, "\001");
+	strcat(reply_str, ctcp_type);
+	strcat(reply_str, " ");
+	strcat(reply_str, reply);
+	strcat(reply_str, "\001");
+
+	return irc_send_notice(irc, to, reply_str);
+}
+
+int irc_send_ctcpreply_version(struct irc *irc, char *to) {
+	size_t total_len = 0;
+	total_len += CLIENT_NAME_LEN + 1;  // "MayzieBot "
+	total_len += CLIENT_VERSION_LEN;  // "0.01"
+
+#if defined(_POSIX_VERSION)
+#if _POSIX_VERSION >= 200112L
+	struct utsname os_version_struct;
+	if(uname(&os_version_struct) >= 0) {
+		size_t sysname_len = strlen(os_version_struct.sysname);
+		size_t release_len = strlen(os_version_struct.release);
+		size_t version_len = strlen(os_version_struct.version);
+
+		total_len += 1;  // Space after "MayzieBot 0.01"
+		total_len += strlen("running on ");
+		total_len += sysname_len + 1;  // "Linux "
+		total_len += release_len + 1;  // "2.6.28 "
+		total_len += version_len + 1;
+
+		char ver_str[total_len];
+		strcpy(ver_str, CLIENT_NAME);
+		strcat(ver_str, " ");
+		strcat(ver_str, CLIENT_VERSION);
+		strcat(ver_str, " ");
+		strcat(ver_str, "running on ");
+		strcat(ver_str, os_version_struct.sysname);
+		strcat(ver_str, " ");
+		strcat(ver_str, os_version_struct.release);
+		strcat(ver_str, " ");
+		strcat(ver_str, os_version_struct.version);
+
+		return irc_send_ctcpreply_raw(irc, to, "VERSION", ver_str);
+	}
+#endif  // _POSIX_VERSION >= 200112L
+#endif  // defined(_POSIX_VERSION)
+
+	char ver_str[total_len];
+	strcpy(ver_str, CLIENT_NAME);
+	strcat(ver_str, " ");
+	strcat(ver_str, CLIENT_VERSION);
+
+	return irc_send_ctcpreply_raw(irc, to, "VERSION", ver_str);
+}
+
 void irc_recv_privmsg(struct irc *irc, char *from, char *to, char *message) {
 	printf("%s <%s> %s\n", to, from, message);
+	if(*from != '#') {
+		/* Parse CTCP messages */
+		if(*message == 0x01) {  // CTCP requests begin with 0x01
+			size_t message_len = strlen(message);
+			if(*(message + message_len - 1) == 0x01) {  // They also end with 0x01
+				if(strncmp("VERSION", message + 1, 7) == 0) {
+					irc_send_ctcpreply_version(irc, from);
+				} else if(strncmp("PING", message + 1, 4) == 0) {
+					irc_send_notice(irc, from, message);
+				} else if(strncmp("\001TIME\001", message, 6) == 0) {
+					time_t time_r = time(NULL);
+					irc_send_ctcpreply_raw(irc, from, "TIME", asctime(localtime(&time_r)));
+				}
+			}
+		} else {
+			;
+		}
+	}
 }
 
 /*
@@ -41,8 +140,8 @@ void irc_parse_raw(struct irc *irc, char *pos_crlf) {
 			char *message = strchr(nickfrom + strlen(nickfrom) + 1, 0x20);
 			if(message != NULL) {
 				message++;  // Ignore the space ' '
-				if(strncmp("PRIVMSG ", message, 8) == 0) {
-					char *nickto = strtok(message + 8, " ");
+				if(strncmp("PRIVMSG ", message, LENGTH_PRIVMSG) == 0) {
+					char *nickto = strtok(message + LENGTH_PRIVMSG, " ");
 					message = strtok(NULL, "\0");
 					if(*message == 0x3a) {
 						message++;
@@ -50,6 +149,8 @@ void irc_parse_raw(struct irc *irc, char *pos_crlf) {
 					} else {
 						goto CLEANUP;  // Malformed IRC message.
 					}
+				} else if(strncmp("NOTICE ", message, LENGTH_NOTICE) == 0) {
+
 				}
 			}
 		}
