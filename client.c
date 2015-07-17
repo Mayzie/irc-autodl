@@ -33,18 +33,23 @@ void irc_parse_raw(struct irc *irc, char *pos_crlf) {
 	/* Replace \r\n (CRLF) with \0\0 */
 	*pos_crlf = '\0';
 	*(pos_crlf + 1) = '\0';
-	printf("Message received (%3d): %.*s\n", length, length, irc->last_msg.message);
 
 	if(irc->last_msg.message[0] == 0x3a) {
 		char *nickfrom = strtok(irc->last_msg.message, "!");  // Nickname the message came from (if any)
 		if(nickfrom != NULL) {
 			nickfrom++;  // Ignore the colon ':'
-			char *message = strchr(irc->last_msg.message, 0x20);
+			char *message = strchr(nickfrom + strlen(nickfrom) + 1, 0x20);
 			if(message != NULL) {
-				if(strncmp("PRIVMSG ", message + 1, 8) == 0) {
+				message++;  // Ignore the space ' '
+				if(strncmp("PRIVMSG ", message, 8) == 0) {
 					char *nickto = strtok(message + 8, " ");
 					message = strtok(NULL, "\0");
-					irc_recv_privmsg(irc, nickfrom, nickto, message);
+					if(*message == 0x3a) {
+						message++;
+						irc_recv_privmsg(irc, nickfrom, nickto, message);
+					} else {
+						goto CLEANUP;  // Malformed IRC message.
+					}
 				}
 			}
 		}
@@ -58,7 +63,6 @@ void irc_parse_raw(struct irc *irc, char *pos_crlf) {
 CLEANUP:
 	irc->last_msg.length -= length + 2;
 	irc->last_msg.message = memmove(irc->last_msg.message, pos_crlf + 2, irc->last_msg.length);
-//	printf("irc_parse_raw() length: %d.\n", irc->last_msg.length);
 	fflush(stdout);
 }
 
