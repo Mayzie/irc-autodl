@@ -1,7 +1,7 @@
 CC=gcc
 DEBUG=-g -DEBUG
 RELEASE=-O3
-CFLAGS=-Wall -Wextra $(DEBUG)
+CFLAGS=-Wall -Wextra
 
 DEPS = irc-autodl.h client.h
 OBJ = irc-autodl.o client.o
@@ -10,8 +10,12 @@ OBJ = irc-autodl.o client.o
 	$(CC) -c -o $@ $< $(CFLAGS) 
 
 all: $(OBJ)
-	mkdir -p ./bin/
-	$(CC) -o ./bin/irc-autodl $^ $(CFLAGS)
+	mkdir -p ./bin/debug/
+	$(CC) -o ./bin/debug/irc-autodl $^ $(CFLAGS) $(DEBUG)
+
+release: $(OBJ)
+	mkdir -p ./bin/release/
+	$(CC) -o ./bin/release/irc-autodl $^ $(CFLAGS) $(RELEASE)
 
 .PHONY: clean
 
