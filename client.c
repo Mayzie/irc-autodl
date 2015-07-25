@@ -21,7 +21,7 @@ int irc_send(const struct irc *irc, const char *msg) {
 	return send(irc->sockid, fixed_msg, length + 2, 0);
 }
 
-int irc_send_message(struct irc *irc, char *to, char *type, char *message) {
+static int irc_send_message(struct irc *irc, char *to, char *type, char *message) {
 	size_t type_len = strlen(type);
 	size_t to_len = strlen(to);
 	size_t message_len = strlen(message);
@@ -44,7 +44,7 @@ int irc_send_privmsg(struct irc *irc, char *to, char *message) {
 	return irc_send_message(irc, to, "PRIVMSG", message);
 }
 
-int irc_send_ctcpreply_raw(struct irc *irc, char *to, char *ctcp_type, char *reply) {
+static int irc_send_ctcpreply_raw(struct irc *irc, char *to, char *ctcp_type, char *reply) {
 	size_t ctcp_type_len = strlen(ctcp_type);
 	size_t ctcp_reply_len = strlen(reply);
 
@@ -58,7 +58,7 @@ int irc_send_ctcpreply_raw(struct irc *irc, char *to, char *ctcp_type, char *rep
 	return irc_send_notice(irc, to, reply_str);
 }
 
-int irc_send_ctcpreply_version(struct irc *irc, char *to) {
+static int irc_send_ctcpreply_version(struct irc *irc, char *to) {
 	size_t total_len = 0;
 	total_len += CLIENT_NAME_LEN + 1;  // "MayzieBot "
 	total_len += CLIENT_VERSION_LEN;  // "0.01"
@@ -102,7 +102,7 @@ int irc_send_ctcpreply_version(struct irc *irc, char *to) {
 	return irc_send_ctcpreply_raw(irc, to, "VERSION", ver_str);
 }
 
-void irc_recv_privmsg(struct irc *irc, char *from, char *to, char *message) {
+static void irc_recv_privmsg(struct irc *irc, char *from, char *to, char *message) {
 	printf("%s <%s> %s\n", to, from, message);
 	if(*from != '#') {
 		/* Parse CTCP messages */
@@ -119,7 +119,11 @@ void irc_recv_privmsg(struct irc *irc, char *from, char *to, char *message) {
 				}
 			}
 		} else {
-			;
+			if(strcmp(from, "Mayzie") == 0) {
+				if(strcasecmp("quit", message) == 0) {
+					irc_quit(irc, "Requested.");
+				}
+			}
 		}
 	}
 }
@@ -127,7 +131,7 @@ void irc_recv_privmsg(struct irc *irc, char *from, char *to, char *message) {
 /*
  * pos_crlf = position of CRLF in message.
  */
-void irc_parse_raw(struct irc *irc, char *pos_crlf) {
+static void irc_parse_raw(struct irc *irc, char *pos_crlf) {
 	int length = pos_crlf - irc->last_msg.message;
 	/* Replace \r\n (CRLF) with \0\0 */
 	*pos_crlf = '\0';
@@ -243,14 +247,34 @@ bool irc_receive_raw(struct irc *irc) {
 		return false;
 }
 
-bool irc_join(struct irc *irc, const char *channel) {
+int irc_join(struct irc *irc, const char *channel) {
 	char *msg = malloc(strlen("JOIN ") + strlen(channel) + 1);
 	strcpy(msg, "JOIN ");
 	strcat(msg, channel);	
 
-	bool ret = irc_send(irc, msg);
+	int ret = irc_send(irc, msg);
 
 	free(msg);
+	return ret;
+}
+
+int irc_quit(struct irc *irc, const char *reason) {
+	size_t reason_len = strlen(reason);
+	bool no_reason = (reason == NULL) || (reason_len == 0);
+	if(no_reason)
+		reason_len = 5;  // "Quit."
+
+	char quit_msg[6 + reason_len];
+	strcpy(quit_msg, "QUIT :");
+	if(no_reason)
+		strcat(quit_msg, "Quit.");
+	else
+		strcat(quit_msg, reason);
+
+	int ret;
+	while((ret = irc_send(irc, quit_msg)) == 0) { ; }
+
+	irc->sockid = -1;
 	return ret;
 }
 
@@ -280,6 +304,9 @@ struct irc *irc_init(const char *hostname, const char *password, const char *por
 
 void irc_free(struct irc *irc) {
 	if(irc != NULL) {
+		if(irc->sockid >= 0)
+			irc_quit(irc, NULL);
+
 		if(irc->nickname != NULL) {
 			free(irc->nickname);
 			irc->nickname = NULL;

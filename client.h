@@ -66,12 +66,14 @@ struct irc {
 	struct irc_last_message last_msg;
 };
 
-int irc_send(const struct irc *, const char *);
-void irc_parse_raw(struct irc *, char *pos_crlf);
-bool irc_receive_raw(struct irc *);
-bool irc_join(struct irc *, const char *);
 struct irc *irc_init(const char *, const char *, const char *);
 void irc_free(struct irc *);
+int irc_join(struct irc *, const char *);
+int irc_quit(struct irc *, const char *);
+int irc_send(const struct irc *, const char *);
+int irc_send_notice(struct irc *, char *, char *);
+int irc_send_privmsg(struct irc *, char *, char *);
+bool irc_receive_raw(struct irc *);
 int irc_connect(struct irc *);
 
 #endif	// CLIENT_H
